@@ -1,0 +1,8 @@
+joblib
+matplotlib
+numpy
+PyWavelets
+scikit-learn
+scipy
+spectrum
+xgboost

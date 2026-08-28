@@ -1,0 +1,31 @@
+# Inputs and generated artifacts
+Data/
+data/
+outputs/
+models/
+models_no_ar/
+*.zip
+*.bin
+*.npy
+*.npz
+*.parquet
+*.joblib
+*.tmp
+*.png
+*.svg
+*:Zone.Identifier
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Local configuration, editors, and logs
+.env
+*.log
+.vscode/
+.idea/
+.DS_Store
