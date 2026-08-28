@@ -1,12 +1,15 @@
 # Project SHIELD Sensor Health Index pipelines
 
-This repository contains the SHI analysis side of Project SHIELD. It keeps two
+This repository contains the SHI analysis side of Project SHIELD. It keeps three
 methodologies separate so their scores and assumptions are not confused:
 
 1. **Simple SHI**, a deterministic ground-truth-referenced distance score;
 2. **Model SHI**, the RandomForest/XGBoost pipeline adapted from
    [`samkorostov/shield-model`](https://github.com/samkorostov/shield-model) at
-   commit `c094797c96923449b6075d8c483df37856b26712`.
+   commit `c094797c96923449b6075d8c483df37856b26712`;
+3. **Reconstructed SHIBench reference SHI**, a healthy-calibrated fusion of
+   Mahalanobis, Isolation Forest, and EWMA detectors based on the methodology
+   named—but not fully specified—in the available paper draft.
 
 Dataset generation is maintained separately in
 [`sdadhich04/noise_injection_shield-`](https://github.com/sdadhich04/noise_injection_shield-).
@@ -18,7 +21,9 @@ Neither SHI pipeline modifies its input recordings.
 - `hardware_simple_shi.py`: baseline-calibrated hardware Simple SHI;
 - `plot_*simple_shi*.py`: Simple SHI visualizations;
 - `model_shi/`: learned features, training, inference, plots, and tests;
-- `model_shi/upstream/`: the exact upstream reference files and commit marker.
+- `model_shi/upstream/`: the exact upstream reference files and commit marker;
+- `shibench_reference_shi/`: reconstructed detector, hardware runner, plots,
+  equations, parameter choices, and tests.
 
 All datasets, binary predictions, trained models, plots, virtual environments,
 and logs are excluded by `.gitignore`.
@@ -59,6 +64,23 @@ Both range from 0 to 1 and remain separate so model disagreement is visible.
 They are classifier estimates, not calibrated physical trust probabilities.
 The random split of overlapping windows can overstate validation performance;
 entire-run and independent hardware evaluation should be used for conclusions.
+
+## Methodology: reconstructed SHIBench reference SHI
+
+This third pipeline uses the same 22 no-AR-Burg features per axis, but requires
+no injected-fault classifier training. It calibrates robust Mahalanobis,
+Isolation Forest, and sequential EWMA-residual branches on a healthy segment,
+maps each branch to health in `[0, 1]`, estimates reliability weights from the
+baseline, and fuses the branches with a weighted geometric mean. It additionally
+reports event-rate, liveness, and plausibility alarms without conflating them
+with the continuous SHI.
+
+The default healthy fifth percentile maps to the SHI alarm boundary `0.5`,
+targeting 5% false positives on the calibration windows. This mapping and all
+other defaults are reconstruction choices because the available draft omits
+the exact formulas and parameters. See
+[`shibench_reference_shi/README.md`](shibench_reference_shi/README.md) for the
+equations, commands, artifacts, and limitations.
 
 ## Setup
 
