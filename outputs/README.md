@@ -1,6 +1,6 @@
-# Simple SHI outputs
+# SHI output directories
 
-This directory is the default parent of generated Simple SHI artifacts. Only
+This directory is the default parent of generated SHI artifacts. Only
 this README is version-controlled; generated binaries, reports, plots, and
 datasets remain ignored by Git.
 
@@ -86,3 +86,25 @@ observed endpoint signals, the SHI, and shading derived from
 Absolute paths inside reports describe the generation machine. After moving a
 workspace, use the report's local directory and filename. The authoritative
 configuration is `processing_config`, not the directory name alone.
+
+## Canonical BRB-r outputs
+
+`outputs/canonical_brb/software/` contains one model JSON and three binary
+timelines per discovered sensor: clean ground truth, `random_0_25`, and
+`random_0_5`. Each 48-byte record contains `timestamp_ms`, 0-to-1 `shi`,
+`raw_distance`, `degradation_score`, `injected_fraction`, three ground-truth
+values, and three observed values.
+
+`outputs/canonical_brb/hardware/` contains one directory per archive member and
+sensor. `model.json` stores selected features, reference statistics,
+reliabilities, expert/composite weights, health-envelope parameters, upstream
+commit, and adaptations. `predictions.bin` uses 32-byte records containing the
+timestamp, SHI, raw distance, degradation score, and three signal values.
+`job_report.json` records the source, calibration strategy, protocol-derived
+fault timestamp, record counts, timing, and completion state.
+
+Both trees have a frozen `batch_plan.json` and `batch_NNN_report.json` files.
+These reports are the authoritative failure tracker and allow only unfinished
+jobs to be retried. Generated plot trees mirror their prediction trees. See
+[`canonical_brb/README.md`](../canonical_brb/README.md) for the complete method
+and commands.

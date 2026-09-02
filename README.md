@@ -1,6 +1,6 @@
 # Project SHIELD Sensor Health Index pipelines
 
-This repository contains the SHI analysis side of Project SHIELD. It keeps three
+This repository contains the SHI analysis side of Project SHIELD. It keeps four
 methodologies separate so their scores and assumptions are not confused:
 
 1. **Simple SHI**, a deterministic ground-truth-referenced distance score;
@@ -9,11 +9,14 @@ methodologies separate so their scores and assumptions are not confused:
    commit `c094797c96923449b6075d8c483df37856b26712`;
 3. **Reconstructed SHIBench reference SHI**, a healthy-calibrated fusion of
    Mahalanobis, Isolation Forest, and EWMA detectors based on the methodology
-   named—but not fully specified—in the available paper draft.
+   named—but not fully specified—in the available paper draft;
+4. **Canonical BRB-r SHI**, the active reliability-weighted quality-vector
+   implementation from `GilliamWong/SHIELD-Sensor-Modality`, adapted to stream
+   the Project SHIELD software- and hardware-injection datasets.
 
 Dataset generation is maintained separately in
 [`sdadhich04/noise_injection_shield-`](https://github.com/sdadhich04/noise_injection_shield-).
-Neither SHI pipeline modifies its input recordings.
+No SHI pipeline modifies its input recordings.
 
 ## Repository layout
 
@@ -24,6 +27,9 @@ Neither SHI pipeline modifies its input recordings.
 - `model_shi/upstream/`: the exact upstream reference files and commit marker;
 - `shibench_reference_shi/`: reconstructed detector, hardware runner, plots,
   equations, parameter choices, and tests.
+- `canonical_brb/`: canonical features and BRB-r equations, software/hardware
+  batched runners, noise-dataset wrapper, binary plotting, tests, and detailed
+  provenance documentation.
 
 All datasets, binary predictions, trained models, plots, virtual environments,
 and logs are excluded by `.gitignore`.
@@ -81,6 +87,36 @@ other defaults are reconstruction choices because the available draft omits
 the exact formulas and parameters. See
 [`shibench_reference_shi/README.md`](shibench_reference_shi/README.md) for the
 equations, commands, artifacts, and limitations.
+
+## Methodology: canonical BRB-r SHI
+
+The canonical implementation is sourced from
+[`GilliamWong/SHIELD-Sensor-Modality`](https://github.com/GilliamWong/SHIELD-Sensor-Modality)
+at commit `222dbb1b0d742c7e8ea9b719c841ac5b1d2f2a72`. It extracts the upstream
+time, Welch-spectrum, Allan-deviation, sym4 MODWT, and signal-quality features.
+Features are selected as mandatory, temporally stable, or degradation-sensitive.
+The upstream BRB-r equation combines expert importance with healthy-data
+reliability, and a healthy calibration envelope maps the weighted feature
+distance to SHI `[0, 1]`.
+
+The original code is specific to a small six-axis IMU recollection. The adapter
+uses bounded NumPy batches and deterministic calibration reservoirs so it can
+process all SHIELD sensor types and 12-hour recordings without loading them
+into memory. Models record the source commit and adaptations. Software output
+contains ground truth plus `random_0_25` and `random_0_5`; hardware output uses
+the same protocol-derived baseline and fault timing metadata as the existing
+hardware tools. See [`canonical_brb/README.md`](canonical_brb/README.md) for
+equations, commands, binary layouts, caveats, and output structure.
+
+Noise injection remains a separate reusable stage, as in the source repository.
+This avoids recomputing deterministic noise whenever SHI settings change and
+lets all SHI methods assess identical injected data. The canonical directory
+provides a wrapper for preparing the dataset and a one-command runner for all
+software and hardware BRB-r batches.
+
+```bash
+python canonical_brb/run_all.py --all-batches --total-batches 10 --workers 4
+```
 
 ## Setup
 
