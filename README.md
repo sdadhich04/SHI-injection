@@ -1,6 +1,6 @@
 # Project SHIELD Sensor Health Index pipelines
 
-This repository contains the SHI analysis side of Project SHIELD. It keeps four
+This repository contains the SHI analysis side of Project SHIELD. It keeps five
 methodologies separate so their scores and assumptions are not confused:
 
 1. **Simple SHI**, a deterministic ground-truth-referenced distance score;
@@ -12,7 +12,11 @@ methodologies separate so their scores and assumptions are not confused:
    named—but not fully specified—in the available paper draft;
 4. **Canonical BRB-r SHI**, the active reliability-weighted quality-vector
    implementation from `GilliamWong/SHIELD-Sensor-Modality`, adapted to stream
-   the Project SHIELD software- and hardware-injection datasets.
+   the Project SHIELD software- and hardware-injection datasets;
+5. **Tier-2 fused SHI**, the draft paper's predecessor Isolation Forest,
+   Mahalanobis, and EWMA fusion applied with within-recording calibration to the
+   physical hardware-stress archives, plus a separately reported binary
+   event-rate branch.
 
 Dataset generation is maintained separately in
 [`sdadhich04/noise_injection_shield-`](https://github.com/sdadhich04/noise_injection_shield-).
@@ -29,7 +33,9 @@ No SHI pipeline modifies its input recordings.
   equations, parameter choices, and tests.
 - `canonical_brb/`: canonical features and BRB-r equations, software/hardware
   batched runners, noise-dataset wrapper, binary plotting, tests, and detailed
-  provenance documentation.
+  provenance documentation;
+- `tier2_fused_shi/`: recovered fused-paper method, Tier-2 hardware adapter,
+  plotting, tests, and a resumable sequential `tmux` launcher.
 
 All datasets, binary predictions, trained models, plots, virtual environments,
 and logs are excluded by `.gitignore`.
@@ -117,6 +123,22 @@ software and hardware BRB-r batches.
 ```bash
 python canonical_brb/run_all.py --all-batches --total-batches 10 --workers 4
 ```
+
+## Methodology: Tier-2 physical-stress fused SHI
+
+The draft states that its Tier-2 experiments used the predecessor fused SHI,
+not canonical BRB-r. `tier2_fused_shi/` ports the recovered 3-second/50%-overlap
+feature and scoring code exactly: Isolation Forest, empirical-covariance
+Mahalanobis distance, and EWMA anomaly components are calibration-normalized,
+equally fused, and inverted to SHI `[0, 1]`. The physical recordings use
+within-recording protocol-defined calibration as reported in the draft.
+
+Binary vibration additionally receives a separate event-rate score because the
+draft's Tier-2 result used a two-branch monitor. Its exact event equation was
+not present in either the draft or recovered source, so that small branch is a
+documented reconstruction and never changes continuous SHI. See
+[`tier2_fused_shi/README.md`](tier2_fused_shi/README.md) for precise provenance,
+limitations, commands, binary layout, and the sequential `tmux` workflow.
 
 ## Setup
 
