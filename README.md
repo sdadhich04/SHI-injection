@@ -1,193 +1,83 @@
-# Project SHIELD Sensor Health Index pipelines
+# Project SHIELD Sensor Health Index (SHI) pipelines
 
-This repository contains the SHI analysis side of Project SHIELD. It keeps five
-methodologies separate so their scores and assumptions are not confused:
+This repository contains analysis pipelines that score Project SHIELD sensor
+recordings. It keeps several SHI approaches separate so their outputs and
+assumptions can be compared without treating them as the same metric. The
+repository expects Project SHIELD software-injection and hardware-injection
+data to be supplied locally; those datasets and generated outputs are not
+tracked here.
 
-1. **Simple SHI**, a deterministic ground-truth-referenced distance score;
-2. **Model SHI**, the RandomForest/XGBoost pipeline adapted from
-   [`samkorostov/shield-model`](https://github.com/samkorostov/shield-model) at
-   commit `c094797c96923449b6075d8c483df37856b26712`;
-3. **Reconstructed SHIBench reference SHI**, a healthy-calibrated fusion of
-   Mahalanobis, Isolation Forest, and EWMA detectors based on the methodology
-   named—but not fully specified—in the available paper draft;
-4. **Canonical BRB-r SHI**, the active reliability-weighted quality-vector
-   implementation from `GilliamWong/SHIELD-Sensor-Modality`, adapted to stream
-   the Project SHIELD software- and hardware-injection datasets;
-5. **Tier-2 fused SHI**, the draft paper's predecessor Isolation Forest,
-   Mahalanobis, and EWMA fusion applied with within-recording calibration to the
-   physical hardware-stress archives, plus a separately reported binary
-   event-rate branch.
+## What it does
 
-Dataset generation is maintained separately in
-[`sdadhich04/noise_injection_shield-`](https://github.com/sdadhich04/noise_injection_shield-).
-No SHI pipeline modifies its input recordings.
+- **Simple SHI** (`analyze_simple_shi.py`, `hardware_simple_shi.py`) extracts
+  windowed signal features and scores deviation from either aligned clean data
+  or a hardware-recording baseline.
+- **Model SHI** (`model_shi/`) builds features, trains per-sensor Random Forest
+  and XGBoost classifiers, performs software and hardware inference, and plots
+  the resulting predictions.
+- **Reconstructed SHIBench reference SHI** (`shibench_reference_shi/`) fuses
+  Mahalanobis, Isolation Forest, and EWMA-based detector branches calibrated on
+  a healthy segment.
+- **Canonical BRB-r SHI** (`canonical_brb/`) runs a reliability-weighted,
+  feature-based scorer on software-injected and hardware-injection data.
+- **Tier-2 fused SHI** (`tier2_fused_shi/`) processes hardware-stress archives
+  with a fused Isolation Forest, Mahalanobis, and EWMA score. Its separate
+  binary event-rate branch is a documented adaptation because the recovered
+  source does not include that branch's exact equation.
 
-## Repository layout
+The scripts batch work, write binary prediction artifacts plus JSON metadata,
+and include plotting and unit-test modules. They do not modify input
+recordings.
 
-- `analyze_simple_shi.py`, `simple_shi_features.py`: software Simple SHI;
-- `hardware_simple_shi.py`: baseline-calibrated hardware Simple SHI;
-- `plot_*simple_shi*.py`: Simple SHI visualizations;
-- `model_shi/`: learned features, training, inference, plots, and tests;
-- `model_shi/upstream/`: the exact upstream reference files and commit marker;
-- `shibench_reference_shi/`: reconstructed detector, hardware runner, plots,
-  equations, parameter choices, and tests.
-- `canonical_brb/`: canonical features and BRB-r equations, software/hardware
-  batched runners, noise-dataset wrapper, binary plotting, tests, and detailed
-  provenance documentation;
-- `tier2_fused_shi/`: recovered fused-paper method, Tier-2 hardware adapter,
-  plotting, tests, and a resumable sequential `tmux` launcher.
+## Tools and inputs
 
-All datasets, binary predictions, trained models, plots, virtual environments,
-and logs are excluded by `.gitignore`.
+The code is Python and uses the packages listed in
+[`requirements.txt`](requirements.txt): NumPy, SciPy, scikit-learn, XGBoost,
+PyWavelets, Spectrum, Matplotlib, and Joblib. The runners expect locally
+available Project SHIELD data, including software-injection outputs from the
+separate `noise_injection_shield` repository and hardware-injection archives.
+The source identifies those archives as hardware inputs but does not document a
+specific device model.
 
-## Methodology: Simple SHI
-
-Simple SHI uses 256-sample windows with stride 64. It extracts time-domain,
-frequency, stability, and stationary-wavelet/MODWT-like features, with optional
-AR-Burg coefficients. Software-injection results compare noisy-window features
-with the aligned clean ground truth. Hardware results instead calibrate a
-reference distribution from the protocol-defined baseline. The feature
-distance is converted to a bounded score where 100 represents closest to the
-reference and lower values indicate greater deviation.
-
-This is an interpretable baseline, not a learned probability. Its hardware
-result depends strongly on the selected baseline and cannot by itself
-distinguish a genuine environmental change from a faulty sensing instrument.
-
-## Methodology: Model SHI
-
-Model SHI reproduces the upstream 256/64 window geometry and extracts 22 scalar
-features per axis without AR-Burg: six time, five frequency, one stability, and
-ten MODWT-like features. Three-axis sensors therefore use 66 features. Enabling
-AR-Burg adds four features per axis (26/78 total) but is substantially slower.
-
-Each sensor receives a `StandardScaler`, Random Forest, and XGBoost model.
-Training uses clean ground-truth windows as healthy examples and only the
-`random_0_25` and `random_0_5` variants as injected examples. Labels follow the
-upstream healthy/pre-fault/active-fault convention and collapse to a binary
-healthy-versus-fault target during model fitting. The two reported SHIs are:
-
-```text
-SHI_RF  = P_RF(class = healthy | window features)
-SHI_XGB = P_XGB(class = healthy | window features)
-```
-
-Both range from 0 to 1 and remain separate so model disagreement is visible.
-They are classifier estimates, not calibrated physical trust probabilities.
-The random split of overlapping windows can overstate validation performance;
-entire-run and independent hardware evaluation should be used for conclusions.
-
-## Methodology: reconstructed SHIBench reference SHI
-
-This third pipeline uses the same 22 no-AR-Burg features per axis, but requires
-no injected-fault classifier training. It calibrates robust Mahalanobis,
-Isolation Forest, and sequential EWMA-residual branches on a healthy segment,
-maps each branch to health in `[0, 1]`, estimates reliability weights from the
-baseline, and fuses the branches with a weighted geometric mean. It additionally
-reports event-rate, liveness, and plausibility alarms without conflating them
-with the continuous SHI.
-
-The default healthy fifth percentile maps to the SHI alarm boundary `0.5`,
-targeting 5% false positives on the calibration windows. This mapping and all
-other defaults are reconstruction choices because the available draft omits
-the exact formulas and parameters. See
-[`shibench_reference_shi/README.md`](shibench_reference_shi/README.md) for the
-equations, commands, artifacts, and limitations.
-
-## Methodology: canonical BRB-r SHI
-
-The canonical implementation is sourced from
-[`GilliamWong/SHIELD-Sensor-Modality`](https://github.com/GilliamWong/SHIELD-Sensor-Modality)
-at commit `222dbb1b0d742c7e8ea9b719c841ac5b1d2f2a72`. It extracts the upstream
-time, Welch-spectrum, Allan-deviation, sym4 MODWT, and signal-quality features.
-Features are selected as mandatory, temporally stable, or degradation-sensitive.
-The upstream BRB-r equation combines expert importance with healthy-data
-reliability, and a healthy calibration envelope maps the weighted feature
-distance to SHI `[0, 1]`.
-
-The original code is specific to a small six-axis IMU recollection. The adapter
-uses bounded NumPy batches and deterministic calibration reservoirs so it can
-process all SHIELD sensor types and 12-hour recordings without loading them
-into memory. Models record the source commit and adaptations. Software output
-contains ground truth plus `random_0_25` and `random_0_5`; hardware output uses
-the same protocol-derived baseline and fault timing metadata as the existing
-hardware tools. See [`canonical_brb/README.md`](canonical_brb/README.md) for
-equations, commands, binary layouts, caveats, and output structure.
-
-Noise injection remains a separate reusable stage, as in the source repository.
-This avoids recomputing deterministic noise whenever SHI settings change and
-lets all SHI methods assess identical injected data. The canonical directory
-provides a wrapper for preparing the dataset and a one-command runner for all
-software and hardware BRB-r batches.
+Create an environment and install the dependencies:
 
 ```bash
-python canonical_brb/run_all.py --all-batches --total-batches 10 --workers 4
-```
-
-## Methodology: Tier-2 physical-stress fused SHI
-
-The draft states that its Tier-2 experiments used the predecessor fused SHI,
-not canonical BRB-r. `tier2_fused_shi/` ports the recovered 3-second/50%-overlap
-feature and scoring code exactly: Isolation Forest, empirical-covariance
-Mahalanobis distance, and EWMA anomaly components are calibration-normalized,
-equally fused, and inverted to SHI `[0, 1]`. The physical recordings use
-within-recording protocol-defined calibration as reported in the draft.
-
-Binary vibration additionally receives a separate event-rate score because the
-draft's Tier-2 result used a two-branch monitor. Its exact event equation was
-not present in either the draft or recovered source, so that small branch is a
-documented reconstruction and never changes continuous SHI. See
-[`tier2_fused_shi/README.md`](tier2_fused_shi/README.md) for precise provenance,
-limitations, commands, binary layout, and the sequential `tmux` workflow.
-
-## Setup
-
-Clone both repositories beside one another:
-
-```text
-workspace/
-├── noise_injection_shield/
-└── SHI-injection/
-```
-
-Then create the SHI environment and run the tests:
-
-```bash
-cd SHI-injection
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-
-NOISE_INJECTION_CODE=../noise_injection_shield \
-PYTHONPATH="$PWD:$PWD/model_shi:../noise_injection_shield" \
-  .venv/bin/python -m unittest discover -p 'test_*.py'
-
-PYTHONPATH="$PWD:$PWD/model_shi" \
-  .venv/bin/python -m unittest discover model_shi -p 'test_*.py'
 ```
 
-## Running Model SHI without AR-Burg
-
-The complete workflow is resumable and processes jobs in parallel. Point it to
-the ignored datasets rather than copying data into Git:
+The commands below are written for a POSIX shell, as is the included Model SHI
+orchestrator. Set the data paths for your local checkout before running:
 
 ```bash
+# Run the Model SHI workflow (feature building, training, inference, and plots).
 NOISE_REPO=../noise_injection_shield \
 DATASET_DIR=../noise_injection_shield/outputs/post_noise_injection_1 \
 HARDWARE_DIR=../Data/hardware_injection \
-TRAINING_ROW_CAP=200000 \
   ./model_shi/run_all_no_ar.sh
+
+# Inspect a Tier-2 hardware run plan without processing data.
+.venv/bin/python tier2_fused_shi/run_hardware.py \
+  --input-dir ../Data/hardware_injection --plan-only --total-batches 10
+
+# Run all canonical BRB-r software and hardware batches.
+.venv/bin/python canonical_brb/run_all.py \
+  --all-batches --total-batches 10 --workers 4
 ```
 
-The runner builds features in batches, trains per-sensor models, performs
-software and hardware inference, and generates signal/SHI/fault-time plots.
-Completed artifacts are verified and skipped on safe reruns; failures are
-recorded and can be retried without recomputing successful jobs.
+Run the included tests after setting the repository paths used by the modules:
 
-## Known limitations
+```bash
+NOISE_INJECTION_CODE=../noise_injection_shield \
+PYTHONPATH="$PWD:$PWD/model_shi:../noise_injection_shield" \
+  .venv/bin/python -m unittest discover -p 'test_*.py'
+```
 
-The present supervised models learn synthetic random multiplicative-noise
-signatures. Physical bias, disconnection, clipping, dropout, thermal, vibration,
-and EMI faults can lie outside that training distribution. Ground-truth event
-timing and affected-sensor metadata must also be evaluated carefully. These
-limitations are why Simple SHI and Model SHI are retained as explicit research
-baselines rather than presented as deployment-ready health guarantees.
+## Credits and provenance
+
+`model_shi/upstream/` preserves the referenced upstream model files and commit
+marker. `canonical_brb/` records its source as
+[`GilliamWong/SHIELD-Sensor-Modality`](https://github.com/GilliamWong/SHIELD-Sensor-Modality),
+and the Model SHI code records its referenced upstream commit in
+`model_shi/upstream/UPSTREAM_COMMIT`. See the method-specific READMEs for
+equations, parameters, output layouts, and limitations.
